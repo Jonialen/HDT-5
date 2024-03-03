@@ -1,13 +1,11 @@
 import random
 import simpy
-import numpy as np
 import csv
 import os
 
-np.random.seed(10)
-random.seed(10)
+# random.seed(11)
 
-MAX_PROCESS = 3
+MAX_PROCESS = 3  # Ajustado para permitir múltiples instrucciones por proceso
 
 
 class Proceso:
@@ -30,21 +28,24 @@ class Proceso:
         # espera por memoria
         yield ram
         print(f"{self.env.now}: [READY] {self.name}")
-        # solicita cpu
         while self.instrucciones > 0:
+            # solicita cpu
             with self.cpu.request() as cpu:
-                if self.hora_inicio == None:
-                    self.hora_inicio = self.env.now
                 yield cpu
+                if self.hora_inicio is None:
+                    self.hora_inicio = self.env.now
                 # ejecuta sus instrucciones
                 print(f"{self.env.now}: [RUNNING] {self.name}")
-                for _ in range(min(MAX_PROCESS, self.instrucciones)):
+                for _ in range(MAX_PROCESS):
                     self.instrucciones -= 1
-                    # print(self.name, self.instrucciones)
                     if self.instrucciones == 0:
                         break
-                print(f"{self.env.now}: [WAITING] {self.name}")
-                yield self.env.timeout(random.expovariate(1.0 / self.interval))
+                if self.instrucciones > 0:
+                    if random.randint(1, 2) == 1:
+                        print(f"{self.env.now}: [WAITING] {self.name}")
+                        yield self.env.timeout(random.expovariate(1.0 / self.interval))
+                    elif random.randint(1, 2) == 2:
+                        print(f"{self.env.now}: [READY] {self.name}")
         self.put_ram()
         self.hora_fin = self.env.now
         print(f"{self.env.now}: [TERMINATED] {self.name}")
@@ -67,30 +68,28 @@ class Driver:
         self.MAX_CPU = MAX_CPU
         self.INTERVAL = INTERVAL
         self.procesos = (25, 50, 100, 150, 200)
-        # self.procesos = (25, 50)
         self.lista_tiempos = []
 
-    def crear_procesos(self, env, ram, cpu, max_num):
-        lista_procesos = []
+    def crear_procesos(self, env, ram, cpu, max_num, lista_procesos):
         for i in range(max_num):
             name = f"Proceso({i+1})"
             # ram/processos
-            data = [np.random.randint(1, 10), np.random.randint(1, 10)]
+            data = [random.randint(1, 10), random.randint(1, 10)]
             new_process = Proceso(name, env, ram, cpu, data, self.INTERVAL)
-            env.process(new_process.run())  # yield the process
             lista_procesos.append(new_process)
-        return lista_procesos
+            env.process(new_process.run())
 
     def ejecutar(self):
         for num_procesos in self.procesos:
+            lista_procesos = []
             env = simpy.Environment()
             ram_total = simpy.Container(
                 env, capacity=self.MAX_RAM, init=self.MAX_RAM)
             cpu_total = simpy.Resource(env, capacity=self.MAX_CPU)
-            lista = self.crear_procesos(
-                env, ram_total, cpu_total, num_procesos)
+            self.crear_procesos(env, ram_total, cpu_total,
+                                num_procesos, lista_procesos)
             env.run()
-            self.lista_tiempos.append(lista)
+            self.lista_tiempos.append(lista_procesos)
 
     def exportar_resultados(self, nombre_archivo):
         with open(nombre_archivo, mode='w', newline='') as file:
@@ -117,3 +116,13 @@ class Driver:
         self.ejecutar()
         nombre_archivo = self.generar_nombre_archivo(nombre_base_archivo)
         self.exportar_resultados(nombre_archivo)
+
+
+if __name__ == "__main__":
+    MAX_RAM = 100
+    MAX_CPU = 2
+    INTERVAL = 1
+    nombre_base_archivo = 'tiempos_procesos.csv'
+
+    driver = Driver(MAX_RAM, MAX_CPU, INTERVAL)
+    driver.ejecutar_y_exportar(nombre_base_archivo)
